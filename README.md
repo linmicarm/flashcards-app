@@ -6,14 +6,15 @@ A single-page flashcards app in plain HTML, CSS, and JavaScript. It needs no fra
 
 ## Features
 
-- **Decks:** create, rename, and delete decks (deleting asks for confirmation). The active deck is highlighted in the sidebar.
+- **Decks:** create, rename/recolor, and delete decks (deleting asks for confirmation). The active deck is highlighted in the sidebar.
 - **Cards:** create, edit, and delete cards. Each card has a front and a back. Edits update the study view right away.
 - **Study mode:** a 3D flip animation, Previous/Next buttons that stop at the first and last card, a progress bar, and a Shuffle toggle. Shuffle only reorders the view and never changes the saved data.
 - **Search:** case-insensitive search across the front and back of every card, debounced to 300 ms, with a match count.
 - **Persistence:** decks, cards, and the last active deck are saved to LocalStorage. The saved data is versioned and validated on load. If it's corrupt, the app starts fresh and keeps a backup of the bad data instead of overwriting it. Changes made in another tab are picked up automatically.
 - **Accessibility:** every input has a label. Buttons have discernible names (list buttons have aria-labels like "Edit card: …"), and focus styles are visible. The modal traps focus, closes on Esc, returns focus to the button that opened it, and makes the background `inert`. A live region announces status changes, and only the visible card face is exposed to screen readers. There's a skip link, touch targets are at least 44 px, and the flip animation is turned off under `prefers-reduced-motion`.
 - **Theming:** colors are CSS variables with a dark theme through `prefers-color-scheme`. Color pairs were picked to meet WCAG AA.
-- **Stretch goals:** keyboard shortcuts, plus import and export of decks as JSON.
+- **Stretch goals:** keyboard shortcuts, import/export of decks as JSON, and per-deck session stats (cards, seen, flips).
+- **UI/UX:** a kawaii pastel theme (bento layout, soft claymorphism, Nunito/Quicksand fonts). Each deck gets one of five colors, which tints its sidebar chip, header and study card. You can swipe the card left/right on a phone, and a tap still flips it. Small toast messages confirm each action, and screen readers announce the same message. On the last card, Next turns into "Start over".
 
 ### Keyboard shortcuts
 

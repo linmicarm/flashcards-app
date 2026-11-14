@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  const { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY, MAX_NAME, MAX_TEXT } = window.FlashStorage;
+  const { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY, MAX_NAME, MAX_TEXT, DECK_COLORS } = window.FlashStorage;
 
   /* ---------------------------------------------------------------- 1. State */
 
@@ -28,6 +28,8 @@
     isFlipped: false,
     isShuffled: false,
     isModalOpen: false,
+    seen: new Set(),    // card ids viewed this session (per deck)
+    flips: 0,           // flips this session (per deck)
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -63,6 +65,11 @@
     cardList: $('#card-list'),
     importInput: $('#import-input'),
     announcer: $('#announcer'),
+    toastRegion: $('#toast-region'),
+    studyCard: $('#study-card'),
+    statTotal: $('#stat-total'),
+    statSeen: $('#stat-seen'),
+    statFlips: $('#stat-flips'),
     modalRoot: $('#modal-root'),
     modalTitle: $('#modal-title'),
     modalDesc: $('#modal-desc'),
@@ -90,6 +97,21 @@
     // Clear first so repeating the same message is still announced.
     els.announcer.textContent = '';
     requestAnimationFrame(() => { els.announcer.textContent = message; });
+  }
+
+  /** Announce to screen readers AND show a little visual toast. */
+  function notify(message) {
+    announce(message);
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    els.toastRegion.append(toast);
+    // Cap the stack at 3 so rapid actions don't pile up.
+    while (els.toastRegion.children.length > 3) els.toastRegion.firstElementChild.remove();
+    setTimeout(() => {
+      toast.classList.add('toast--leaving');
+      setTimeout(() => toast.remove(), 300);
+    }, 2200);
   }
 
   function persist() {
@@ -157,6 +179,7 @@
       btn.className = 'deck-item';
       btn.dataset.action = 'select-deck';
       btn.dataset.deckId = deck.id;
+      btn.dataset.color = deck.color;
       if (deck.id === state.activeDeckId) btn.setAttribute('aria-current', 'true');
 
       const name = document.createElement('span');
@@ -172,7 +195,11 @@
       sr.textContent = n === 1 ? ' card' : ' cards';
       count.append(sr);
 
-      btn.append(name, count);
+      const dot = document.createElement('span');
+      dot.className = 'deck-dot';
+      dot.setAttribute('aria-hidden', 'true');
+
+      btn.append(dot, name, count);
       li.append(btn);
       return li;
     });
@@ -189,11 +216,13 @@
     const total = cardsOf(deck.id).length;
     const visible = visibleCards();
 
+    els.deckView.dataset.color = deck.color;
     els.deckTitle.textContent = deck.name;
     els.deckMeta.textContent = `${plural(total, 'card')} · created ${new Date(deck.createdAt).toLocaleDateString()}`;
 
     // Toolbar
     const q = ui.query.trim();
+    els.statTotal.textContent = String(total);
     els.searchCount.textContent = q ? `${visible.length} of ${plural(total, 'card')} match` : '';
     els.search.disabled = total === 0;
     els.shuffleBtn.disabled = visible.length < 2;
@@ -223,9 +252,15 @@
     els.position.textContent = `Card ${ui.index + 1} of ${visible.length}`;
     els.progressFill.style.width = `${((ui.index + 1) / visible.length) * 100}%`;
 
-    // Boundaries: no wrap-around, so disable instead of going out of range.
+    // Boundaries: Prev is disabled on the first card. On the last card, Next becomes "Start over".
+    const isLast = ui.index === visible.length - 1;
     els.prevBtn.disabled = ui.index === 0;
-    els.nextBtn.disabled = ui.index === visible.length - 1;
+    els.nextBtn.disabled = visible.length < 2;
+    els.nextBtn.textContent = isLast && visible.length > 1 ? 'Start over ↺' : 'Next →';
+    els.nextBtn.classList.toggle('is-restart', isLast && visible.length > 1);
+
+    ui.seen.add(card.id);
+    renderStats();
 
     applyFlipState();
 
@@ -233,6 +268,15 @@
     els.deleteCurrentBtn.dataset.cardId = card.id;
 
     highlightCurrentInList();
+  }
+
+  function renderStats() {
+    const deck = activeDeck();
+    if (!deck) return;
+    const ids = new Set(cardsOf(deck.id).map((c) => c.id));
+    const seen = [...ui.seen].filter((id) => ids.has(id)).length;
+    els.statSeen.textContent = `${seen}/${ids.size}`;
+    els.statFlips.textContent = String(ui.flips);
   }
 
   function applyFlipState() {
@@ -331,27 +375,30 @@
     ui.order = [];
     ui.index = 0;
     ui.isShuffled = false;
+    ui.seen = new Set();
+    ui.flips = 0;
     resetFlip();
     persist();
     render();
   }
 
-  function createDeck(name) {
-    const deck = { id: uid(), name: name.trim(), createdAt: Date.now() };
+  function createDeck(name, color) {
+    const deck = { id: uid(), name: name.trim(), color: DECK_COLORS.includes(color) ? color : 'lavender', createdAt: Date.now() };
     state.decks.push(deck);
     state.cardsByDeckId[deck.id] = [];
     selectDeck(deck.id);
-    announce(`Deck “${deck.name}” created.`);
+    notify(`Deck “${deck.name}” created ✿`);
     return deck;
   }
 
-  function renameDeck(id, name) {
+  function updateDeck(id, name, color) {
     const deck = state.decks.find((d) => d.id === id);
     if (!deck) return;
     deck.name = name.trim();
+    if (DECK_COLORS.includes(color)) deck.color = color;
     persist();
     render();
-    announce(`Deck renamed to “${deck.name}”.`);
+    notify('Deck saved ✓');
   }
 
   function deleteDeck(id) {
@@ -361,7 +408,7 @@
     delete state.cardsByDeckId[id];
     const next = state.decks[i] || state.decks[i - 1] || null;
     selectDeck(next ? next.id : null);
-    announce(`Deck “${removed.name}” deleted.`);
+    notify(`Deck “${removed.name}” deleted`);
   }
 
   // Cards
@@ -377,7 +424,7 @@
     const pos = visibleCards().findIndex((c) => c.id === card.id);
     if (pos !== -1) { ui.index = pos; resetFlip(); }
     render();
-    announce('Card added.');
+    notify('Card added ✿');
   }
 
   function updateCard(cardId, front, back) {
@@ -392,7 +439,7 @@
     const pos = visibleCards().findIndex((c) => c.id === cardId);
     if (pos !== -1) ui.index = pos;
     render();
-    announce('Card updated.');
+    notify('Card saved ✓');
   }
 
   function deleteCard(cardId) {
@@ -409,7 +456,7 @@
     if (visibleBefore !== -1 && visibleBefore < ui.index) ui.index -= 1; // keep the same card in view
     if (wasCurrent) resetFlip();
     render();
-    announce('Card deleted.');
+    notify('Card deleted');
   }
 
   // Study navigation
@@ -427,11 +474,24 @@
     if (focused && focused.disabled) els.flipBtn.focus();
   }
 
+  /** Next button: advance, or loop back to the first card from the last one. */
+  function nextOrRestart() {
+    const visible = visibleCards();
+    if (ui.index >= visible.length - 1 && visible.length > 1) {
+      goTo(0);
+      notify('Back to the start — round two! ✿');
+    } else {
+      goTo(ui.index + 1);
+    }
+  }
+
   function flip() {
     const card = visibleCards()[ui.index];
     if (!card) return;
     ui.isFlipped = !ui.isFlipped;
+    ui.flips += 1;
     applyFlipState();
+    renderStats();
     announce(ui.isFlipped ? `Back: ${card.back}` : `Front: ${card.front}`);
   }
 
@@ -439,7 +499,7 @@
     if (ui.isShuffled) {
       ui.isShuffled = false;
       ui.order = []; // syncOrder rebuilds natural order
-      announce('Original order restored.');
+      notify('Original order restored');
     } else {
       syncOrder();
       // Fisher–Yates on a copy of the ids (the stored cards are untouched).
@@ -450,7 +510,7 @@
       }
       ui.order = order;
       ui.isShuffled = true;
-      announce('Cards shuffled.');
+      notify('Cards shuffled ✿');
     }
     ui.index = 0;
     resetFlip();
@@ -465,7 +525,7 @@
       type: 'flashcards-deck',
       version: 1,
       exportedAt: new Date().toISOString(),
-      deck: { name: deck.name },
+      deck: { name: deck.name, color: deck.color },
       cards: cardsOf(deck.id).map(({ front, back }) => ({ front, back })),
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -477,7 +537,7 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    announce(`Exported “${deck.name}”.`);
+    notify(`Exported “${deck.name}”`);
   }
 
   async function importFile(file) {
@@ -487,13 +547,13 @@
       let lastId = null;
       for (const d of decks) {
         // Always mint fresh ids so imported data can never collide with existing decks/cards.
-        const deck = { id: uid(), name: uniqueDeckName(d.name), createdAt: Date.now() };
+        const deck = { id: uid(), name: uniqueDeckName(d.name), color: d.color, createdAt: Date.now() };
         state.decks.push(deck);
         state.cardsByDeckId[deck.id] = d.cards.map((c) => ({ id: uid(), front: c.front, back: c.back, updatedAt: Date.now() }));
         lastId = deck.id;
       }
       selectDeck(lastId);
-      announce(`Imported ${plural(decks.length, 'deck')}.`);
+      notify(`Imported ${plural(decks.length, 'deck')} ✿`);
     } catch (err) {
       const message = err instanceof SyntaxError ? 'That file is not valid JSON.' : err.message;
       openModal({
@@ -553,7 +613,39 @@
     }
   }
 
+  function buildSwatches(f) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'field swatches';
+    const legend = document.createElement('legend');
+    legend.textContent = f.label;
+    fieldset.append(legend);
+    const row = document.createElement('div');
+    row.className = 'swatch-row';
+    for (const color of f.options) {
+      const id = `modal-field-${f.name}-${color}`;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = f.name;
+      input.value = color;
+      input.id = id;
+      input.className = 'swatch-input';
+      input.checked = color === f.value;
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.className = 'swatch';
+      label.dataset.color = color;
+      const text = document.createElement('span');
+      text.className = 'visually-hidden';
+      text.textContent = color;
+      label.append(text);
+      row.append(input, label);
+    }
+    fieldset.append(row);
+    return fieldset;
+  }
+
   function buildField(f) {
+    if (f.type === 'swatches') return buildSwatches(f);
     const wrap = document.createElement('div');
     wrap.className = 'field';
     const id = `modal-field-${f.name}`;
@@ -648,16 +740,21 @@
 
   // Convenience modals
   function openDeckModal(deck = null) {
+    // New decks cycle through the palette so the sidebar stays colourful by default.
+    const defaultColor = DECK_COLORS[state.decks.length % DECK_COLORS.length];
     openModal({
-      title: deck ? 'Rename deck' : 'New deck',
-      fields: [{ name: 'name', label: 'Deck name', value: deck ? deck.name : '', maxLength: MAX_NAME }],
+      title: deck ? 'Edit deck' : 'New deck',
+      fields: [
+        { name: 'name', label: 'Deck name', value: deck ? deck.name : '', maxLength: MAX_NAME },
+        { name: 'color', label: 'Deck color', type: 'swatches', options: DECK_COLORS, value: deck ? deck.color : defaultColor },
+      ],
       submitLabel: deck ? 'Save' : 'Create deck',
       fallbackFocus: '[data-action="new-deck"]',
-      onSubmit: ({ name }) => {
+      onSubmit: ({ name, color }) => {
         const error = validateDeckName(name, deck ? deck.id : null);
         if (error) return { field: 'name', message: error };
-        if (deck) renameDeck(deck.id, name);
-        else createDeck(name);
+        if (deck) updateDeck(deck.id, name, color);
+        else createDeck(name, color);
         return null;
       },
     });
@@ -699,6 +796,7 @@
   document.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');
     if (!target || target.disabled) return;
+    if (target === els.studyCard && swipe.justSwiped) { swipe.justSwiped = false; return; }
     const { action, cardId, deckId } = target.dataset;
     const deck = activeDeck();
 
@@ -754,7 +852,7 @@
 
       case 'flip': flip(); break;
       case 'prev': goTo(ui.index - 1); break;
-      case 'next': goTo(ui.index + 1); break;
+      case 'next': nextOrRestart(); break;
       case 'shuffle': toggleShuffle(); break;
       case 'clear-search': clearSearch(); els.search.focus(); break;
 
@@ -770,6 +868,7 @@
     const values = {};
     for (const field of els.modalFields.querySelectorAll('input, textarea')) {
       field.removeAttribute('aria-invalid');
+      if (field.type === 'radio' && !field.checked) continue;
       values[field.name] = field.value;
     }
     const result = modal.onSubmit(values);
@@ -816,6 +915,27 @@
     }
   });
 
+  // Swipe left/right on the study card (touch, pen or mouse drag). A tap still flips.
+  const swipe = { x: 0, y: 0, id: null, justSwiped: false };
+  const SWIPE_MIN = 50;
+  els.studyCard.addEventListener('pointerdown', (e) => {
+    swipe.id = e.pointerId;
+    swipe.x = e.clientX;
+    swipe.y = e.clientY;
+    swipe.justSwiped = false;
+  });
+  els.studyCard.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== swipe.id) return;
+    swipe.id = null;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return; // a tap or a vertical scroll
+    swipe.justSwiped = true; // swallow the click that follows so the card doesn't also flip
+    if (dx < 0) nextOrRestart();
+    else goTo(ui.index - 1);
+  });
+  els.studyCard.addEventListener('pointercancel', () => { swipe.id = null; });
+
   // Debounced search (300 ms). Filters the view only — stored cards are untouched.
   let searchTimer = null;
   function applySearch() {
@@ -859,7 +979,7 @@
   /* ------------------------------------------------------------------ Start */
 
   function seedSampleDeck() {
-    const deck = { id: uid(), name: 'Sample: Web Basics', createdAt: Date.now() };
+    const deck = { id: uid(), name: 'Sample: Web Basics', color: 'lavender', createdAt: Date.now() };
     const pairs = [
       ['What does HTML stand for?', 'HyperText Markup Language'],
       ['Which CSS property creates a 3D flip?', 'transform: rotateY(180deg) — with perspective on the parent and backface-visibility: hidden on each face.'],

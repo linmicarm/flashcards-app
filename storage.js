@@ -9,6 +9,8 @@
   const VERSION = 1;
   const MAX_NAME = 60;
   const MAX_TEXT = 1000;
+  const DECK_COLORS = ['pink', 'lavender', 'mint', 'peach', 'yellow'];
+  const pickColor = (c, i = 0) => (DECK_COLORS.includes(c) ? c : DECK_COLORS[i % DECK_COLORS.length]);
 
   function defaultState() {
     return { version: VERSION, decks: [], cardsByDeckId: {}, activeDeckId: null };
@@ -29,7 +31,12 @@
       const name = d.name.trim().slice(0, MAX_NAME);
       if (!name) continue;
       seen.add(d.id);
-      clean.decks.push({ id: d.id, name, createdAt: isNumber(d.createdAt) ? d.createdAt : Date.now() });
+      clean.decks.push({
+        id: d.id,
+        name,
+        color: pickColor(d.color, clean.decks.length),
+        createdAt: isNumber(d.createdAt) ? d.createdAt : Date.now(),
+      });
     }
 
     const byDeck = raw.cardsByDeckId && typeof raw.cardsByDeckId === 'object' ? raw.cardsByDeckId : {};
@@ -115,17 +122,17 @@
     if (data && data.type === 'flashcards-deck' && data.deck && isString(data.deck.name)) {
       const name = data.deck.name.trim().slice(0, MAX_NAME);
       if (!name) throw new Error('The deck in this file has no name.');
-      return [{ name, cards: cleanCards(data.cards) }];
+      return [{ name, color: pickColor(data.deck.color), cards: cleanCards(data.cards) }];
     }
 
     if (data && Array.isArray(data.decks)) {
       const s = sanitize({ ...data, version: VERSION });
       if (!s.decks.length) throw new Error('No valid decks were found in this file.');
-      return s.decks.map((d) => ({ name: d.name, cards: cleanCards(s.cardsByDeckId[d.id]) }));
+      return s.decks.map((d) => ({ name: d.name, color: d.color, cards: cleanCards(s.cardsByDeckId[d.id]) }));
     }
 
     throw new Error('This file is not a Flashcards export.');
   }
 
-  window.FlashStorage = { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY, MAX_NAME, MAX_TEXT };
+  window.FlashStorage = { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY, MAX_NAME, MAX_TEXT, DECK_COLORS };
 })();
