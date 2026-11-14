@@ -2,6 +2,8 @@
 
 A single-page flashcards app in plain HTML, CSS, and JavaScript. It needs no frameworks and no build step.
 
+<img width="1897" height="943" alt="image" src="https://github.com/user-attachments/assets/d9c149c6-ff64-4912-848d-ee91d94c88b5" />
+
 **Run it:** open `index.html` in a browser. You can also serve the folder with any static server (for example VS Code Live Server) or with GitHub Pages.
 
 ## Features
