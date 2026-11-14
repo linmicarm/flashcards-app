@@ -9,10 +9,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-  <!-- Classic (non-module) scripts so the app works when opened straight from the file system. -->
-  <script src="storage.js" defer></script>
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=3">
+  <!-- ?v=N busts the browser cache: bump it whenever styles.css / storage.js / app.js change.
+       Classic (non-module) scripts so the app works when opened straight from the file system. -->
+  <script src="storage.js?v=3" defer></script>
+  <script src="app.js?v=3" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to study area</a>
@@ -71,7 +72,7 @@
           <div class="search">
             <label for="search-input" class="visually-hidden">Search cards</label>
             <svg class="search-icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.5"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
-            <input type="search" id="search-input" placeholder="Search questions & answers…" autocomplete="off"
+            <input type="search" id="search-input" placeholder="Search cards…" autocomplete="off"
                    aria-describedby="search-count">
           </div>
 
