@@ -21,7 +21,7 @@
   --text: #3a2a4a;              /* 12.6:1 on white */
   --text-muted: #6b5a7b;        /* 6.1:1 on --bg */
   --border: #efe1f0;
-  --border-strong: #9480a8;     /* 3.6:1 input edges on white */
+  --border-strong: #b7a3c9;     /* 3.1:1 input edges on white */
 
   /* Actions */
   --primary: #c8b6ff;
@@ -49,8 +49,6 @@
   --font-ui: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-display: "Quicksand", "Nunito", system-ui, sans-serif;
   --flip-duration: 0.6s;
-  --sparkle: rgba(255, 255, 255, 0.75);
-  --sparkle-2: rgba(255, 255, 255, 0.55);
 
   /* Per-deck colour (overridden by [data-color]) */
   --deck: var(--lavender);
@@ -67,7 +65,7 @@
     --text: #f7effc;
     --text-muted: #cbbbd9;      /* 9.4:1 on --bg */
     --border: #3d3049;
-    --border-strong: #8e7ba3;
+    --border-strong: #7d6a92;
     --primary-hover: #d6c8ff;
     --primary-shadow: #8b72e0;
     --soft: #33283f;
@@ -76,8 +74,6 @@
     --danger: #ff8fb4;
     --danger-soft: #432436;
     --focus: #d6c8ff;
-    --sparkle: rgba(255, 255, 255, 0.07);
-    --sparkle-2: rgba(255, 255, 255, 0.05);
     --clay: 0 14px 30px -12px rgba(0, 0, 0, 0.6),
             inset 0 -5px 0 rgba(0, 0, 0, 0.18),
             inset 0 2px 0 rgba(255, 255, 255, 0.05);
@@ -568,14 +564,14 @@ kbd {
 
 .card-front {
   background:
-    radial-gradient(circle at 88% 16%, var(--sparkle) 0 7%, transparent 7.5%),
-    radial-gradient(circle at 92% 28%, var(--sparkle-2) 0 3%, transparent 3.5%),
+    radial-gradient(circle at 88% 16%, rgba(255, 255, 255, 0.75) 0 7%, transparent 7.5%),
+    radial-gradient(circle at 92% 28%, rgba(255, 255, 255, 0.55) 0 3%, transparent 3.5%),
     linear-gradient(160deg, var(--deck-soft), var(--surface) 85%);
 }
 .card-back {
   transform: rotateY(180deg);
   background:
-    radial-gradient(circle at 12% 84%, var(--sparkle-2) 0 6%, transparent 6.5%),
+    radial-gradient(circle at 12% 84%, rgba(255, 255, 255, 0.6) 0 6%, transparent 6.5%),
     linear-gradient(160deg, var(--surface), var(--deck-soft));
 }
 
