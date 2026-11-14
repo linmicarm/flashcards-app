@@ -1,23 +1,31 @@
 /*
- * storage.js — LocalStorage helpers with versioning and safe-parse fallback.
- * Exposes window.FlashStorage = { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY }.
+ * storage.js — LocalStorage helpers with versioning, migration and safe-parse fallback.
+ * Exposes window.FlashStorage = { loadState, saveState, hasSavedState, parseImport, ... }.
+ *
+ * Saved shape (version 2):
+ *   { version, decks: [{ id, name, color, createdAt }],
+ *     cardsByDeckId: { [deckId]: [{ id, front, back, mastery, updatedAt }] },
+ *     activeDeckId, selectedDeckIds: [deckId], view: 'study' | 'all' }
  */
 (function () {
   'use strict';
 
   const STORAGE_KEY = 'flashcards-app:state';
-  const VERSION = 1;
+  const VERSION = 2;
   const MAX_NAME = 60;
   const MAX_TEXT = 1000;
+  const MAX_MASTERY = 5;
+  const VIEWS = ['study', 'all'];
   const DECK_COLORS = ['pink', 'lavender', 'mint', 'peach', 'yellow'];
   const pickColor = (c, i = 0) => (DECK_COLORS.includes(c) ? c : DECK_COLORS[i % DECK_COLORS.length]);
 
-  function defaultState() {
-    return { version: VERSION, decks: [], cardsByDeckId: {}, activeDeckId: null };
-  }
-
   const isString = (v) => typeof v === 'string';
   const isNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+  const toMastery = (v) => (isNumber(v) ? Math.max(0, Math.min(MAX_MASTERY, Math.round(v))) : 0);
+
+  function defaultState() {
+    return { version: VERSION, decks: [], cardsByDeckId: {}, activeDeckId: null, selectedDeckIds: [], view: 'study' };
+  }
 
   /** Keep only well-formed decks/cards so one bad record can't crash the app. */
   function sanitize(raw) {
@@ -40,29 +48,41 @@
     }
 
     const byDeck = raw.cardsByDeckId && typeof raw.cardsByDeckId === 'object' ? raw.cardsByDeckId : {};
+    const cardIds = new Set(); // card ids must be unique across ALL decks (cards can move between decks)
     for (const deck of clean.decks) {
       const list = Array.isArray(byDeck[deck.id]) ? byDeck[deck.id] : [];
-      const cardIds = new Set();
       clean.cardsByDeckId[deck.id] = list
         .filter((c) => c && isString(c.id) && isString(c.front) && isString(c.back) && !cardIds.has(c.id) && cardIds.add(c.id))
         .map((c) => ({
           id: c.id,
           front: c.front.slice(0, MAX_TEXT),
           back: c.back.slice(0, MAX_TEXT),
+          mastery: toMastery(c.mastery),
           updatedAt: isNumber(c.updatedAt) ? c.updatedAt : Date.now(),
         }));
     }
 
-    clean.activeDeckId = seen.has(raw.activeDeckId) ? raw.activeDeckId : (clean.decks[0] ? clean.decks[0].id : null);
+    const selected = Array.isArray(raw.selectedDeckIds) ? raw.selectedDeckIds.filter((id) => seen.has(id)) : [];
+    clean.selectedDeckIds = [...new Set(selected)];
+    if (!clean.selectedDeckIds.length && clean.decks.length) {
+      clean.selectedDeckIds = [seen.has(raw.activeDeckId) ? raw.activeDeckId : clean.decks[0].id];
+    }
+    clean.activeDeckId = clean.selectedDeckIds[0] || null;
+    clean.view = VIEWS.includes(raw.view) ? raw.view : 'study';
     return clean;
   }
 
-  /** Upgrade older saved shapes to the current VERSION. Returns null if unknown. */
+  /** Upgrade older saved shapes one version at a time. Returns null if unknown. */
   function migrate(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    if (raw.version === VERSION) return raw;
-    // Example for the future: if (raw.version === 1) { ...transform...; raw.version = 2; }
-    return null;
+    if (!raw || typeof raw !== 'object' || !isNumber(raw.version)) return null;
+    let data = { ...raw };
+    if (data.version === 1) {
+      // v1 → v2: single active deck becomes a selection list; cards gain mastery (sanitize defaults it to 0).
+      data.selectedDeckIds = data.activeDeckId ? [data.activeDeckId] : [];
+      data.view = 'study';
+      data.version = 2;
+    }
+    return data.version === VERSION ? data : null;
   }
 
   function hasSavedState() {
@@ -98,7 +118,9 @@
         version: VERSION,
         decks: state.decks,
         cardsByDeckId: state.cardsByDeckId,
-        activeDeckId: state.activeDeckId,
+        activeDeckId: state.selectedDeckIds[0] || null,
+        selectedDeckIds: state.selectedDeckIds,
+        view: state.view,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
       return true;
@@ -110,14 +132,18 @@
 
   /**
    * Accepts either a single-deck export ({ type: 'flashcards-deck', deck, cards })
-   * or a full backup ({ decks, cardsByDeckId }). Returns [{ name, cards: [{ front, back }] }].
+   * or a full backup ({ decks, cardsByDeckId }). Returns [{ name, color, cards: [{ front, back, mastery }] }].
    * Throws an Error with a user-friendly message on bad input.
    */
   function parseImport(data) {
     const cleanCards = (cards) =>
       (Array.isArray(cards) ? cards : [])
         .filter((c) => c && isString(c.front) && isString(c.back) && (c.front.trim() || c.back.trim()))
-        .map((c) => ({ front: c.front.trim().slice(0, MAX_TEXT), back: c.back.trim().slice(0, MAX_TEXT) }));
+        .map((c) => ({
+          front: c.front.trim().slice(0, MAX_TEXT),
+          back: c.back.trim().slice(0, MAX_TEXT),
+          mastery: toMastery(c.mastery),
+        }));
 
     if (data && data.type === 'flashcards-deck' && data.deck && isString(data.deck.name)) {
       const name = data.deck.name.trim().slice(0, MAX_NAME);
@@ -126,7 +152,7 @@
     }
 
     if (data && Array.isArray(data.decks)) {
-      const s = sanitize({ ...data, version: VERSION });
+      const s = sanitize(data);
       if (!s.decks.length) throw new Error('No valid decks were found in this file.');
       return s.decks.map((d) => ({ name: d.name, color: d.color, cards: cleanCards(s.cardsByDeckId[d.id]) }));
     }
@@ -134,5 +160,8 @@
     throw new Error('This file is not a Flashcards export.');
   }
 
-  window.FlashStorage = { loadState, saveState, hasSavedState, parseImport, STORAGE_KEY, MAX_NAME, MAX_TEXT, DECK_COLORS };
+  window.FlashStorage = {
+    loadState, saveState, hasSavedState, parseImport,
+    STORAGE_KEY, MAX_NAME, MAX_TEXT, MAX_MASTERY, DECK_COLORS,
+  };
 })();

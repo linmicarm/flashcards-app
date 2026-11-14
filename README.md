@@ -6,25 +6,31 @@ A single-page flashcards app in plain HTML, CSS, and JavaScript. It needs no fra
 
 ## Features
 
-- **Decks:** create, rename/recolor, and delete decks (deleting asks for confirmation). The active deck is highlighted in the sidebar.
-- **Cards:** create, edit, and delete cards. Each card has a front and a back. Edits update the study view right away.
-- **Study mode:** a 3D flip animation, Previous/Next buttons that stop at the first and last card, a progress bar, and a Shuffle toggle. Shuffle only reorders the view and never changes the saved data.
-- **Search:** case-insensitive search across the front and back of every card, debounced to 300 ms, with a match count.
-- **Persistence:** decks, cards, and the last active deck are saved to LocalStorage. The saved data is versioned and validated on load. If it's corrupt, the app starts fresh and keeps a backup of the bad data instead of overwriting it. Changes made in another tab are picked up automatically.
-- **Accessibility:** every input has a label. Buttons have discernible names (list buttons have aria-labels like "Edit card: …"), and focus styles are visible. The modal traps focus, closes on Esc, returns focus to the button that opened it, and makes the background `inert`. A live region announces status changes, and only the visible card face is exposed to screen readers. There's a skip link, touch targets are at least 44 px, and the flip animation is turned off under `prefers-reduced-motion`.
-- **Theming:** colors are CSS variables with a dark theme through `prefers-color-scheme`. Color pairs were picked to meet WCAG AA.
-- **Stretch goals:** keyboard shortcuts, import/export of decks as JSON, and per-deck session stats (cards, seen, flips).
-- **UI/UX:** a kawaii pastel theme (bento layout, soft claymorphism, Nunito/Quicksand fonts). Each deck gets one of five colors, which tints its sidebar chip, header and study card. You can swipe the card left/right on a phone, and a tap still flips it. Small toast messages confirm each action, and screen readers announce the same message. On the last card, Next turns into "Start over".
+- **Decks as categories:** create, edit (name and color), and delete decks. Deleting asks for confirmation. Each deck has one of five pastel colors, which tints its sidebar chip, header, cards, and grid tiles.
+- **Cards:** create, edit, and delete cards with a question, an answer, and a deck (category). Editing a card can move it to another deck. Validation messages appear if a field is missing.
+- **Study mode:** one card at a time with a 3D flip ("Reveal answer"), Prev/Next, "Card 1 of N", a progress bar, and shuffle. On the last card, Next turns into "Start over". You can swipe the card left/right on phones and tablets.
+- **Mastery tracking (0–5):** "I know this" raises a card's mastery by 1 and "Still learning" lowers it by 1. Either button then moves to the next card. Each card shows a 5-dot meter, and "Reset progress" starts a card over. "Hide mastered" removes 5/5 cards so you can focus on the rest.
+- **Study statistics:** total, mastered, in progress, and not started counts, plus a stacked progress bar.
+- **All cards view:** a responsive grid (1, 2, or 3 columns) showing each card's question, answer, deck, and mastery, with Study, Edit, Reset, and Delete buttons. It shows 12 cards at a time with a "Load more" button.
+- **Multi-deck filter:** a dropdown with a checkbox and card count for each deck. Pick several decks to study them mixed together.
+- **Search:** case-insensitive search of questions and answers, debounced to 300 ms, with a match count. Search only filters the view and never changes the saved data.
+- **Persistence:** decks, cards, mastery, the selected decks, and the current view are saved to LocalStorage. The saved data is versioned: version 1 data migrates to version 2 automatically. Corrupt data never crashes the app; it starts fresh and keeps a backup. Changes made in another tab are synced.
+- **Responsive:** phone (one column, deck chips you scroll sideways), tablet (two-column grid, stats in a row), and desktop (sticky deck sidebar, stats beside the study card, three-column grid).
+- **Accessibility:** labelled inputs, buttons with discernible names, visible focus styles, and touch targets of 44 px or more. The modal traps focus, closes on Esc, returns focus to the button that opened it, and makes the page behind it `inert`. The tabs follow the ARIA tabs pattern (arrow keys, Home and End). The Hide mastered toggle is a real checkbox with `role="switch"`. Mastery meters have text alternatives, and a live region announces updates (toasts are visual only). The flip animation turns off under `prefers-reduced-motion`. Text colors meet WCAG AA in both light and dark themes.
+- **Theme:** kawaii pastel design (bento tiles, soft claymorphism, Nunito and Quicksand fonts) with a dark "night garden" mode.
+- **Extras:** keyboard shortcuts, and import/export of decks as JSON (mastery included).
 
 ### Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
-| `Space` | Flip the card (when focus isn't on a button or text field) |
+| `Space` | Reveal or hide the answer (when focus isn't on a button or text field) |
 | `←` / `→` | Previous / next card |
-| `Esc` | Close the dialog, or clear the search box |
-| `Enter` | Submit a dialog from a single-line field |
-| `Ctrl/⌘ + Enter` | Submit a dialog from a multi-line field |
+| `K` | I know this (+1 mastery) |
+| `L` | Still learning (−1 mastery) |
+| `←` / `→` on the tabs | Switch between Study mode and All cards |
+| `Esc` | Close a dialog or the deck filter, or clear the search box |
+| `Enter` / `Ctrl+Enter` | Submit a dialog from a single-line / multi-line field |
 | `Tab` / `Shift+Tab` | Move focus (stays inside an open dialog) |
 
 ## File structure
@@ -42,21 +48,26 @@ flashcards-app/
 ```js
 // Persisted (LocalStorage key "flashcards-app:state")
 {
-  version: 1,
-  decks: [{ id, name, createdAt }],
-  cardsByDeckId: { [deckId]: [{ id, front, back, updatedAt }] },
-  activeDeckId: string | null
+  version: 2,
+  decks: [{ id, name, color, createdAt }],
+  cardsByDeckId: { [deckId]: [{ id, front, back, mastery /* 0–5 */, updatedAt }] },
+  activeDeckId: string | null,   // last active deck (first selected)
+  selectedDeckIds: string[],     // decks currently being studied
+  view: 'study' | 'all'
 }
 
 // Transient UI state (never saved)
-ui = { query, order /* card ids in study order */, index, isFlipped, isShuffled, isModalOpen }
+ui = { query, order, index, isFlipped, isShuffled, hideMastered, shown, isModalOpen, filterOpen }
 ```
 
 ## Manual QA checklist
 
 - [ ] Use the whole app with only the keyboard. Tab stays inside open dialogs, and Esc returns focus to where you were.
 - [ ] Flip a card, then press Next. The new card shows its **front** right away, with no spin that reveals the answer.
-- [ ] On the last card, Next is disabled and focus moves to Flip instead of getting lost.
+- [ ] On the last card, Next turns into "Start over". On the first card, Prev is disabled and focus moves to the flip button.
+- [ ] "I know this" / "Still learning" change the 5-dot meter and the stats. Turn on "Hide mastered" and mastered cards disappear.
+- [ ] Tick two decks in the Decks filter: the title changes to "Mixed study" and each card shows its deck name.
+- [ ] Resize to 375 px and 768 px wide: nothing scrolls sideways and every button is easy to tap.
 - [ ] Search "xyz" shows the "No cards found" state. Clearing the search restores the full set.
 - [ ] Refresh the page: decks, cards, and the active deck are all still there.
 - [ ] In DevTools, run `localStorage.setItem('flashcards-app:state', '{bad')` and reload. The app starts empty and doesn't crash.
